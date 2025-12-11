@@ -105,7 +105,7 @@ def postprocess(logits: torch.Tensor):
 # 5. STREAMLIT APP
 # ----------------------------------------------------------
 
-st.title("Lung Segmentation App")
+st.title("Lung Segmentation App by Ago")
 st.write("Carica una RX torace e segmentiamo i polmoni.")
 
 hide_file_details = """
