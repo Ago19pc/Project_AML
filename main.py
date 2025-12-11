@@ -126,13 +126,36 @@ hide_file_details = """
 st.markdown(hide_file_details, unsafe_allow_html=True)
 
 
-
+if "use_default" not in st.session_state:
+    st.session_state.use_default = False
 
 uploaded_file = st.file_uploader("Carica un PNG RX", type=["png"])
 
-if uploaded_file is not None:
-    st.markdown(f"**Visualizzando:** *{uploaded_file.name}*")
+# Pulsante per usare l'immagine di esempio
+default = st.button("Usa immagine di esempio")
+
+if default:
+    st.session_state.use_default = True
+
+image = None
+gt_file = None
+image_name = None
+
+# Se l’utente ha scelto di usare il default
+if st.session_state.use_default:
+    image = Image.open("Chest_Xray_PA_3-8-2010.png")
+    gt_file = Image.open("mask.jpeg")
+    image_name = "Chest_Xray_PA_3-8-2010.png"
+
+# Se invece ha caricato un file
+elif uploaded_file is not None:
     image = Image.open(uploaded_file)
+    image_name = uploaded_file.name
+
+# Mostra l'immagine scelta
+if image is not None:
+    st.markdown(f"**Visualizzando:** *{image_name}*")
+    #image = Image.open(uploaded_file)
 
     # Compute prediction once (we'll use it in both branches)
     model = load_model()
@@ -178,43 +201,52 @@ if uploaded_file is not None:
         pass
 
     else:
-        # ✅ Ask for GT mask, and only then show everything together
-        gt_file = st.file_uploader(
-            "Carica la maschera ground truth (PNG)",
-            type=["png"],
-            key="gt"
-        )
 
-        if gt_file is None:
-            st.info("Carica una maschera per vedere il confronto con la predizione.")
-        else:
+        if st.session_state.use_default:
+            # ⭐ Se hai premuto default, usa la maschera locale senza chiedere upload
+            gt_file = "mask.jpeg"   # puoi anche mettere il path in session_state
             gt_img = Image.open(gt_file).convert("L")
+
+            st.success("Usata la maschera di default dal server.")
+
+        else:
+            # ✅ Ask for GT mask, and only then show everything together
+            gt_file = st.file_uploader(
+                "Carica la maschera ground truth (PNG)",
+                type=["png"],
+                key="gt"
+            )
+
+            if gt_file is None:
+                st.info("Carica una maschera per vedere il confronto con la predizione.")
+            else:
+                gt_img = Image.open(gt_file).convert("L")
             # Resize GT to match prediction size
-            gt_img_resized = gt_img.resize(pred_mask_img.size, resample=Image.NEAREST)
-            gt_np = np.array(gt_img_resized)
+        gt_img_resized = gt_img.resize(pred_mask_img.size, resample=Image.NEAREST)
+        gt_np = np.array(gt_img_resized)
 
-            # Binarize GT: anything > 0 becomes 1
-            gt_bin = (gt_np > 0).astype(np.uint8)
+        # Binarize GT: anything > 0 becomes 1
+        gt_bin = (gt_np > 0).astype(np.uint8)
 
-            # Compute Dice
-            intersection = np.logical_and(pred_mask_np == 1, gt_bin == 1).sum()
-            pred_sum = (pred_mask_np == 1).sum()
-            gt_sum = (gt_bin == 1).sum()
-            dice = (2.0 * intersection) / (pred_sum + gt_sum + 1e-8)
+        # Compute Dice
+        intersection = np.logical_and(pred_mask_np == 1, gt_bin == 1).sum()
+        pred_sum = (pred_mask_np == 1).sum()
+        gt_sum = (gt_bin == 1).sum()
+        dice = (2.0 * intersection) / (pred_sum + gt_sum + 1e-8)
 
-            st.markdown(f"**Dice coefficient (pred vs GT):** `{dice:.3f}`")
+        st.markdown(f"**Dice coefficient (pred vs GT):** `{dice:.3f}`")
 
-            # Show GT, prediction, and combined visualization
-            st.subheader("Confronto predizione vs ground truth")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.image(gt_img_resized, caption="GT Mask", use_container_width=True)
-            with col2:
-                st.image(pred_mask_img, caption="Predicted Mask", use_container_width=True)
-            with col3:
-                combo = np.stack([
-                    (gt_bin * 255).astype(np.uint8),       # red
-                    (pred_mask_np * 255).astype(np.uint8), # green
-                    np.zeros_like(gt_bin, dtype=np.uint8)  # blue
-                ], axis=-1)
-                st.image(combo, caption="GT (red) vs Pred (green)", use_container_width=True)
+        # Show GT, prediction, and combined visualization
+        st.subheader("Confronto predizione vs ground truth")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.image(gt_img_resized, caption="GT Mask", use_container_width=True)
+        with col2:
+            st.image(pred_mask_img, caption="Predicted Mask", use_container_width=True)
+        with col3:
+            combo = np.stack([
+                (gt_bin * 255).astype(np.uint8),       # red
+                (pred_mask_np * 255).astype(np.uint8), # green
+                np.zeros_like(gt_bin, dtype=np.uint8)  # blue
+            ], axis=-1)
+            st.image(combo, caption="GT (red) vs Pred (green)", use_container_width=True)
